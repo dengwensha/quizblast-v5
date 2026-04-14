@@ -19,18 +19,24 @@
             <span id="timerBox">Süre: -</span>
           </div>
         </div>
+
         <div class="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-200">
           <div class="text-sm text-slate-500 mb-2">Aktif Soru</div>
           <div id="questionText" class="text-2xl font-bold leading-10">Soru bekleniyor...</div>
         </div>
+
         <div class="grid md:grid-cols-2 gap-4">
           <button class="text-left p-5 rounded-2xl bg-red-500 text-white font-medium hover:opacity-90 transition" onclick="sendAnswer('A')" id="btnA">A</button>
           <button class="text-left p-5 rounded-2xl bg-blue-500 text-white font-medium hover:opacity-90 transition" onclick="sendAnswer('B')" id="btnB">B</button>
           <button class="text-left p-5 rounded-2xl bg-amber-500 text-white font-medium hover:opacity-90 transition" onclick="sendAnswer('C')" id="btnC">C</button>
           <button class="text-left p-5 rounded-2xl bg-emerald-500 text-white font-medium hover:opacity-90 transition" onclick="sendAnswer('D')" id="btnD">D</button>
         </div>
-        <div id="statusBox" class="mt-6 rounded-2xl bg-slate-100 p-4 text-slate-700">Sunucuya bağlanıyor...</div>
+
+        <div id="statusBox" class="mt-6 rounded-2xl bg-slate-100 p-4 text-slate-700">
+          WebSocket hazırlanıyor...
+        </div>
       </div>
+
       <div class="bg-white rounded-3xl shadow-lg p-6">
         <h3 class="text-xl font-bold mb-4">Canlı Skor Tablosu</h3>
         <ul id="leaderboardList" class="space-y-3"></ul>
@@ -39,63 +45,132 @@
   </div>
 
   <script>
-    let wsProtocol = location.protocol === "https:" ? "wss" : "ws";
-    let ws = new WebSocket(wsProtocol + "://" + location.host + "/ws");
-    let myName = localStorage.getItem("quiz_name") || "";
-    let myRoom = localStorage.getItem("quiz_room") || "";
+    let ws = null;
     let countdownInterval = null;
-    document.getElementById("playerInfo").innerText = myName ? myName + " / Oda " + myRoom : "Oyuncu bilgisi yok";
+    const myName = localStorage.getItem("quiz_name") || "";
+    const myRoom = localStorage.getItem("quiz_room") || "";
 
-    ws.onopen = () => {
-      if (!myName || !myRoom) {
-        document.getElementById("statusBox").innerText = "Oyuncu bilgisi bulunamadı. Ana sayfaya dön.";
-        return;
-      }
-      ws.send(JSON.stringify({ type: "join", name: myName, room_code: myRoom }));
-      document.getElementById("statusBox").innerText = "Oyuna bağlandın.";
-    };
+    document.getElementById("playerInfo").innerText =
+      myName ? `${myName} / Oda ${myRoom}` : "Oyuncu bilgisi yok";
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "question") {
-        const q = msg.data;
-        document.getElementById("questionText").innerText = q.question;
-        document.getElementById("btnA").innerText = "A) " + q.options[0];
-        document.getElementById("btnB").innerText = "B) " + q.options[1];
-        document.getElementById("btnC").innerText = "C) " + q.options[2];
-        document.getElementById("btnD").innerText = "D) " + q.options[3];
-        document.getElementById("statusBox").innerText = "Yeni soru geldi.";
-        startTimer(msg.duration);
-      }
-      if (msg.type === "answer_result") {
-        document.getElementById("statusBox").innerText = (msg.correct ? "Doğru cevap! " : "Yanlış cevap. ") + "Doğru cevap: " + msg.correct_answer + " | Puanın: " + msg.score;
-      }
-      if (msg.type === "question_closed") {
-        document.getElementById("statusBox").innerText = "Süre bitti. Doğru cevap: " + msg.correct_answer;
+    function setStatus(msg) {
+      document.getElementById("statusBox").innerText = msg;
+      console.log("[PLAYER]", msg);
+    }
+
+    function connectWS() {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${protocol}://${location.host}/ws`;
+
+      setStatus("Bağlantı kuruluyor...");
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        setStatus("Sunucuya bağlandı.");
+        if (!myName || !myRoom) {
+          setStatus("Oyuncu bilgisi bulunamadı. Ana sayfadan tekrar gir.");
+          return;
+        }
+
+        ws.send(JSON.stringify({
+          type: "join",
+          name: myName,
+          room_code: myRoom
+        }));
+
+        setStatus("Oyuna katılım gönderildi.");
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("[PLAYER MESSAGE]", msg);
+
+        if (msg.type === "join_success") {
+          setStatus(`Oyuna bağlandın: ${msg.name} / Oda ${msg.room_code}`);
+        }
+
+        if (msg.type === "question") {
+          const q = msg.data;
+          document.getElementById("questionText").innerText = q.question;
+          document.getElementById("btnA").innerText = "A) " + q.options[0];
+          document.getElementById("btnB").innerText = "B) " + q.options[1];
+          document.getElementById("btnC").innerText = "C) " + q.options[2];
+          document.getElementById("btnD").innerText = "D) " + q.options[3];
+          setStatus("Yeni soru geldi.");
+          startTimer(msg.duration || 15);
+        }
+
+        if (msg.type === "answer_result") {
+          setStatus(
+            (msg.correct ? "Doğru cevap! " : "Yanlış cevap. ") +
+            "Doğru cevap: " + msg.correct_answer +
+            " | Puanın: " + msg.score
+          );
+        }
+
+        if (msg.type === "question_closed") {
+          setStatus("Süre bitti. Doğru cevap: " + msg.correct_answer);
+          stopTimer();
+        }
+
+        if (msg.type === "leaderboard") {
+          renderLeaderboard(msg.players);
+        }
+
+        if (msg.type === "info") {
+          setStatus(msg.message);
+        }
+
+        if (msg.type === "quiz_finished") {
+          setStatus("Quiz tamamlandı.");
+          stopTimer();
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("[PLAYER WS ERROR]", err);
+        setStatus("WebSocket hatası oluştu.");
+      };
+
+      ws.onclose = () => {
+        setStatus("Bağlantı koptu. Yeniden bağlanılıyor...");
         stopTimer();
-      }
-      if (msg.type === "leaderboard") renderLeaderboard(msg.players);
-      if (msg.type === "info") document.getElementById("statusBox").innerText = msg.message;
-      if (msg.type === "quiz_finished") {
-        document.getElementById("statusBox").innerText = "Quiz tamamlandı.";
-        stopTimer();
-      }
-    };
+        setTimeout(connectWS, 2000);
+      };
+    }
 
     function sendAnswer(answer) {
-      if (!myName) return;
-      ws.send(JSON.stringify({ type: "answer", name: myName, answer: answer }));
-      document.getElementById("statusBox").innerText = "Cevabın gönderildi: " + answer;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        setStatus("Bağlantı hazır değil.");
+        return;
+      }
+
+      if (!myName) {
+        setStatus("Oyuncu adı bulunamadı.");
+        return;
+      }
+
+      ws.send(JSON.stringify({
+        type: "answer",
+        name: myName,
+        answer: answer
+      }));
+
+      setStatus("Cevabın gönderildi: " + answer);
     }
 
     function renderLeaderboard(players) {
       const ul = document.getElementById("leaderboardList");
       ul.innerHTML = "";
+
       const entries = Object.entries(players).sort((a, b) => b[1] - a[1]);
       entries.forEach(([name, score], index) => {
         const li = document.createElement("li");
         li.className = "flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3";
-        li.innerHTML = `<div class="font-medium">${index + 1}. ${name}</div><div class="text-sm bg-slate-900 text-white px-3 py-1 rounded-lg">${score} puan</div>`;
+        li.innerHTML = `
+          <div class="font-medium">${index + 1}. ${name}</div>
+          <div class="text-sm bg-slate-900 text-white px-3 py-1 rounded-lg">${score} puan</div>
+        `;
         ul.appendChild(li);
       });
     }
@@ -104,17 +179,24 @@
       stopTimer();
       let remaining = seconds;
       document.getElementById("timerBox").innerText = "Süre: " + remaining + " sn";
+
       countdownInterval = setInterval(() => {
         remaining--;
         document.getElementById("timerBox").innerText = "Süre: " + remaining + " sn";
-        if (remaining <= 0) stopTimer();
+        if (remaining <= 0) {
+          stopTimer();
+        }
       }, 1000);
     }
 
     function stopTimer() {
-      if (countdownInterval) clearInterval(countdownInterval);
-      countdownInterval = null;
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
     }
+
+    connectWS();
   </script>
 </body>
 </html>
