@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuizBlast Admin Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
+    <h1 class="text-3xl font-bold text-slate-900 mb-2">Admin Girişi</h1>
+    <p class="text-slate-500 mb-6">Yönetim paneline erişmek için giriş yap.</p>
+
+    <input id="username" class="w-full border border-slate-300 rounded-xl p-4 mb-4" placeholder="Kullanıcı adı" />
+    <input id="password" type="password" class="w-full border border-slate-300 rounded-xl p-4 mb-4" placeholder="Şifre" />
+
+    <button onclick="login()" class="w-full rounded-xl bg-slate-900 text-white p-4 hover:bg-slate-800 transition">
+      Giriş Yap
+    </button>
+
+    <div id="message" class="mt-4 text-sm text-slate-600"></div>
+  </div>
+
+  <script>
+    async function login() {
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value.trim();
+
+      const res = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+
+      if (data.ok) {
+        window.location.href = "/admin";
+      } else {
+        document.getElementById("message").innerText = data.message || "Giriş başarısız";
+      }
+    }
+  </script>
+</body>
+</html>

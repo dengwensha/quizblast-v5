@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import os
 import json
 import asyncio
@@ -15,6 +15,10 @@ Base.metadata.create_all(bind=engine)
 ROOM_CODE = os.getenv("ROOM_CODE", "1234")
 QUESTION_DURATION = int(os.getenv("QUESTION_DURATION", "15"))
 
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+ADMIN_COOKIE_NAME = "quizblast_admin_auth"
+
 clients: list[WebSocket] = []
 players: dict[str, int] = {}
 answered_players: set[str] = set()
@@ -24,6 +28,17 @@ current_question_index = 0
 quiz_started = False
 question_open = False
 auto_task = None
+
+
+def is_admin_authenticated(request: Request) -> bool:
+    token = request.cookies.get(ADMIN_COOKIE_NAME)
+    return token == "ok"
+
+
+def require_admin(request: Request):
+    if not is_admin_authenticated(request):
+        return RedirectResponse(url="/admin-login", status_code=303)
+    return None
 
 
 def db_get_questions():
@@ -144,8 +159,17 @@ def host():
     return FileResponse(os.path.join(BASE_DIR, "static/host.html"))
 
 
+@app.get("/admin-login")
+def admin_login_page():
+    return FileResponse(os.path.join(BASE_DIR, "static/admin_login.html"))
+
+
 @app.get("/admin")
-def admin():
+def admin(request: Request):
+    auth_redirect = require_admin(request)
+    if auth_redirect:
+        return auth_redirect
+
     return FileResponse(os.path.join(BASE_DIR, "static/admin.html"))
 
 
@@ -167,8 +191,42 @@ def api_config():
     }
 
 
+@app.post("/api/admin-login")
+async def api_admin_login(request: Request):
+    body = await request.json()
+
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", "")).strip()
+
+    if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
+        return JSONResponse(
+            {"ok": False, "message": "Kullanıcı adı veya şifre hatalı"},
+            status_code=401
+        )
+
+    response = JSONResponse({"ok": True})
+    response.set_cookie(
+        key=ADMIN_COOKIE_NAME,
+        value="ok",
+        httponly=True,
+        samesite="lax",
+        secure=False
+    )
+    return response
+
+
+@app.post("/api/admin-logout")
+def api_admin_logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(ADMIN_COOKIE_NAME)
+    return response
+
+
 @app.get("/api/questions")
-def api_list_questions():
+def api_list_questions(request: Request):
+    if not is_admin_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Yetkisiz erişim"}, status_code=401)
+
     rows = db_get_questions()
     return {
         "items": [
@@ -185,6 +243,9 @@ def api_list_questions():
 
 @app.post("/api/questions")
 async def api_add_question(request: Request):
+    if not is_admin_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Yetkisiz erişim"}, status_code=401)
+
     body = await request.json()
 
     question = str(body.get("question", "")).strip()
@@ -192,29 +253,17 @@ async def api_add_question(request: Request):
     correct = body.get("correct", None)
 
     if not question:
-        return JSONResponse(
-            {"ok": False, "message": "Soru boş olamaz"},
-            status_code=400
-        )
+        return JSONResponse({"ok": False, "message": "Soru boş olamaz"}, status_code=400)
 
     if not isinstance(options, list) or len(options) != 4:
-        return JSONResponse(
-            {"ok": False, "message": "4 seçenek gerekli"},
-            status_code=400
-        )
+        return JSONResponse({"ok": False, "message": "4 seçenek gerekli"}, status_code=400)
 
     options = [str(x).strip() for x in options]
     if any(not x for x in options):
-        return JSONResponse(
-            {"ok": False, "message": "Tüm seçenekler dolu olmalı"},
-            status_code=400
-        )
+        return JSONResponse({"ok": False, "message": "Tüm seçenekler dolu olmalı"}, status_code=400)
 
     if correct not in [0, 1, 2, 3]:
-        return JSONResponse(
-            {"ok": False, "message": "Doğru cevap 0-3 arası olmalı"},
-            status_code=400
-        )
+        return JSONResponse({"ok": False, "message": "Doğru cevap 0-3 arası olmalı"}, status_code=400)
 
     db = SessionLocal()
     try:
@@ -236,17 +285,17 @@ async def api_add_question(request: Request):
 
 
 @app.delete("/api/questions/{question_id}")
-def api_delete_question(question_id: int):
+def api_delete_question(question_id: int, request: Request):
+    if not is_admin_authenticated(request):
+        return JSONResponse({"ok": False, "message": "Yetkisiz erişim"}, status_code=401)
+
     global current_question_index
 
     db = SessionLocal()
     try:
         row = db.query(Question).filter(Question.id == question_id).first()
         if not row:
-            return JSONResponse(
-                {"ok": False, "message": "Soru bulunamadı"},
-                status_code=404
-            )
+            return JSONResponse({"ok": False, "message": "Soru bulunamadı"}, status_code=404)
 
         db.delete(row)
         db.commit()
@@ -280,7 +329,6 @@ async def websocket_endpoint(websocket: WebSocket):
             "players": players
         }))
 
-        # Yeni bağlanan biri, quiz aktif ve soru açıksa mevcut soruyu hemen alsın
         if quiz_started and question_open and get_question_count() > 0:
             await websocket.send_text(json.dumps({
                 "type": "question",
@@ -322,7 +370,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 await broadcast_leaderboard()
 
-                # Join olduktan sonra da aktif soru varsa gönder
                 if quiz_started and question_open and get_question_count() > 0:
                     await websocket.send_text(json.dumps({
                         "type": "question",

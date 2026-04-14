@@ -10,27 +10,41 @@
   <div class="max-w-6xl mx-auto px-4 py-8">
     <div class="grid lg:grid-cols-2 gap-6">
       <div class="bg-white rounded-3xl shadow-lg p-6">
-        <h1 class="text-2xl font-bold mb-4">Soru Ekle</h1>
+        <div class="flex items-center justify-between mb-4">
+          <h1 class="text-2xl font-bold">Soru Ekle</h1>
+          <button onclick="logout()" class="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-500">
+            Çıkış
+          </button>
+        </div>
+
         <input id="question" class="w-full border rounded-xl p-4 mb-3" placeholder="Soru metni" />
         <input id="optA" class="w-full border rounded-xl p-4 mb-3" placeholder="A seçeneği" />
         <input id="optB" class="w-full border rounded-xl p-4 mb-3" placeholder="B seçeneği" />
         <input id="optC" class="w-full border rounded-xl p-4 mb-3" placeholder="C seçeneği" />
         <input id="optD" class="w-full border rounded-xl p-4 mb-3" placeholder="D seçeneği" />
+
         <select id="correct" class="w-full border rounded-xl p-4 mb-4">
           <option value="0">Doğru cevap: A</option>
           <option value="1">Doğru cevap: B</option>
           <option value="2">Doğru cevap: C</option>
           <option value="3">Doğru cevap: D</option>
         </select>
-        <button onclick="addQuestion()" class="w-full rounded-xl bg-slate-900 text-white p-4 hover:bg-slate-800">Soruyu Kaydet</button>
+
+        <button onclick="addQuestion()" class="w-full rounded-xl bg-slate-900 text-white p-4 hover:bg-slate-800">
+          Soruyu Kaydet
+        </button>
+
         <div id="message" class="mt-4 text-sm text-slate-600"></div>
       </div>
 
       <div class="bg-white rounded-3xl shadow-lg p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-2xl font-bold">Soru Listesi</h2>
-          <button onclick="loadQuestions()" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-500">Yenile</button>
+          <button onclick="loadQuestions()" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-500">
+            Yenile
+          </button>
         </div>
+
         <div id="questionList" class="space-y-4"></div>
       </div>
     </div>
@@ -40,11 +54,19 @@
     async function loadQuestions() {
       const res = await fetch("/api/questions");
       const data = await res.json();
+
+      if (!res.ok) {
+        document.getElementById("message").innerText = data.message || "Yetkisiz erişim";
+        return;
+      }
+
       const wrap = document.getElementById("questionList");
       wrap.innerHTML = "";
+
       data.items.forEach((item, index) => {
         const div = document.createElement("div");
         div.className = "border rounded-2xl p-4 bg-slate-50";
+
         div.innerHTML = `
           <div class="font-bold mb-2">${index + 1}. ${item.question}</div>
           <div class="text-sm text-slate-600 mb-2">A) ${item.options[0]}</div>
@@ -52,8 +74,11 @@
           <div class="text-sm text-slate-600 mb-2">C) ${item.options[2]}</div>
           <div class="text-sm text-slate-600 mb-2">D) ${item.options[3]}</div>
           <div class="text-sm font-medium mb-3">Doğru: ${["A","B","C","D"][item.correct]}</div>
-          <button onclick="deleteQuestion(${item.id})" class="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-500">Sil</button>
+          <button onclick="deleteQuestion(${item.id})" class="px-4 py-2 rounded-xl bg-rose-600 text-white hover:bg-rose-500">
+            Sil
+          </button>
         `;
+
         wrap.appendChild(div);
       });
     }
@@ -69,13 +94,16 @@
         ],
         correct: parseInt(document.getElementById("correct").value)
       };
+
       const res = await fetch("/api/questions", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify(payload)
       });
+
       const data = await res.json();
       document.getElementById("message").innerText = data.ok ? "Soru eklendi." : data.message || "Hata oluştu.";
+
       if (data.ok) {
         document.getElementById("question").value = "";
         document.getElementById("optA").value = "";
@@ -88,11 +116,23 @@
     }
 
     async function deleteQuestion(id) {
-      if (!confirm("Bu soruyu silmek istiyor musun?")) return;
-      const res = await fetch(`/api/questions/${id}`, { method: "DELETE" });
+      const ok = confirm("Bu soruyu silmek istiyor musun?");
+      if (!ok) return;
+
+      const res = await fetch(`/api/questions/${id}`, {
+        method: "DELETE"
+      });
+
       const data = await res.json();
       document.getElementById("message").innerText = data.ok ? "Soru silindi." : data.message || "Hata oluştu.";
       loadQuestions();
+    }
+
+    async function logout() {
+      await fetch("/api/admin-logout", {
+        method: "POST"
+      });
+      window.location.href = "/admin-login";
     }
 
     loadQuestions();
