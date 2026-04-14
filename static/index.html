@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuizBlast</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-white min-h-screen">
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <div class="grid lg:grid-cols-2 gap-10 items-center">
+      <div>
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 text-slate-300 text-sm mb-6">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          Canlı quiz platformu
+        </div>
+        <h1 class="text-5xl font-bold leading-tight">
+          QuizBlast ile
+          <span class="text-blue-400">gerçek zamanlı quiz</span>
+          deneyimi
+        </h1>
+        <p class="mt-6 text-slate-300 text-lg leading-8">
+          Oyuncular tek kodla bağlanır, host soruları yönetir, skor tablosu canlı akar.
+        </p>
+        <div class="mt-8 flex gap-4">
+          <a href="/host" class="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition font-medium">Host Paneli</a>
+          <a href="/admin" class="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 transition font-medium">Admin Panel</a>
+        </div>
+      </div>
+
+      <div class="bg-white text-slate-900 rounded-3xl shadow-2xl p-8">
+        <h2 class="text-2xl font-bold mb-2">Oyuna Katıl</h2>
+        <p class="text-slate-500 mb-6">Adını ve oda kodunu gir, oyuncu ekranına geç.</p>
+
+        <input id="name" class="w-full border border-slate-300 rounded-xl p-4 mb-4" placeholder="Adın" />
+        <input id="room" class="w-full border border-slate-300 rounded-xl p-4 mb-4" placeholder="Oda Kodu" />
+
+        <button onclick="joinGame()" class="w-full rounded-xl bg-slate-900 text-white p-4 hover:bg-slate-800 transition">
+          Oyuna Gir
+        </button>
+
+        <div id="roomInfo" class="mt-4 text-sm text-slate-500"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    fetch('/api/config').then(r => r.json()).then(data => {
+      document.getElementById('roomInfo').innerText = 'Varsayılan oda kodu: ' + data.room_code;
+    }).catch(()=>{});
+
+    function joinGame() {
+      const name = document.getElementById("name").value.trim();
+      const room = document.getElementById("room").value.trim();
+      if (!name || !room) {
+        alert("Lütfen ad ve oda kodunu gir.");
+        return;
+      }
+      localStorage.setItem("quiz_name", name);
+      localStorage.setItem("quiz_room", room);
+      location.href = "/player";
+    }
+  </script>
+</body>
+</html>
